@@ -2,8 +2,8 @@ module Main where
 
 import System.Console.CmdArgs
 
-import HEP.Automation.EventAnalyis.ProgType
-import HEP.Automation.EventAnalyis.Command
+import HEP.Automation.EventAnalysis.ProgType
+import HEP.Automation.EventAnalysis.Command
 
 main :: IO () 
 main = do 

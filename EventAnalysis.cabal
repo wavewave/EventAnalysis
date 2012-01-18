@@ -26,11 +26,20 @@ Library
   ghc-prof-options: -caf-all -auto-all
   Build-Depends: 
                    base>4, mtl>2, directory, filepath,
-                   cmdargs
+                   cmdargs, 
+                   xml-types == 0.3.*,
+                   enumerator == 0.4.*, 
+                   enumerator-util == 0.1.*,
+                   LHEParser == 0.2.*, 
+                   HEPUtil == 0.1.*,
+                   HROOT == 0.7.*, 
+                   ttbar >= 0.1.999 && < 0.3
   Exposed-Modules: 
-                   HEP.Automation.EventAnalyis.ProgType
-                   HEP.Automation.EventAnalyis.Job
-                   HEP.Automation.EventAnalyis.Command
+                   HEP.Automation.EventAnalysis.ProgType
+                   HEP.Automation.EventAnalysis.Job
+                   HEP.Automation.EventAnalysis.Command
+                   HEP.Automation.EventAnalysis.FileDriver
+                   HEP.Automation.EventAnalysis.Print
   Other-Modules: 
 
  
