@@ -20,15 +20,20 @@ import HEP.Automation.JobQueue.JobQueue
 import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as M
 import qualified Data.Vector as V
+import HEP.Automation.JobQueue.JobType
 import HEP.Automation.JobQueue.JobJson
 
-import Data.Text
+import qualified Data.Text as T
+-- import Data.Text hiding (take, groupBy,length, null, fitler)
 import Data.Either 
 -- import Data.Text.Lazy.Builder
 -- import Data.Text.Lazy.Encoding
 import Blaze.ByteString.Builder 
 import Data.Aeson.Encode as AE
 
+import Data.Function
+import Data.List 
+import HEP.Storage.WebDAV.Type
 
 startSingle :: FilePath -> FilePath -> IO () 
 startSingle lhefile pdffile = do 
@@ -42,45 +47,99 @@ startSingle lhefile pdffile = do
                                                , countfunc = afbTTBar >>= liftIO . print }
   doSingleFileAnalysis analysis 
 
-startJsonTest :: IO ()
-startJsonTest = do 
-  putStrLn "hey"
-  bstr <- L.readFile "jobqueueserver20110909.json"  
-  -- let mmymap = decode bstr :: Maybe (M.IntMap JobInfo)
-  -- maybe (putStrLn "fail") (const (putStrLn "success")) mmymap 
+startJsonConvert :: FilePath -> FilePath -> IO ()
+startJsonConvert oldfile newfile = do 
+  bstr <- L.readFile oldfile -- "jobqueueserver20110909.json"  
   let pjsonresult = A.parse json bstr -- decode bstr 
   case pjsonresult of 
     A.Done _ (Array jsonresult) -> do 
       let nvec = V.map convertJobInfo jsonresult
-      -- let details = V.map getOneDetail jsonresult 
-      -- print $ V.length details 
-      -- let testitem = V.head details
-      --    nitem = convertOneDetail testitem 
-      -- print $ V.head nvec
-      -- let (t :: Either String JobInfo) = fromAeson (V.head nvec)
-      -- print t 
-
-      -- print $ (toAeson ([] :: [Int]))
-      {- let rs = rights . V.toList . V.map (fromAeson :: Value -> Either String JobInfo) $ nvec 
-      print $ Prelude.length rs
-      print $ V.length nvec  -}
-
       let nbstr = toLazyByteString . AE.fromValue $ Array nvec
-
-      L.writeFile "jobqueueserver20110909_convert20120119.json" nbstr
-
-      -- let (t :: Either String JobDetail) = fromAeson $ Object (V.head filtered)
-      -- print t 
-  --     print $ V.length filtered 
-  -- putStrLn $ take 200 $ show jsonresult 
+      L.writeFile newfile nbstr  -- "jobqueueserver20110909_convert20120119.json" nbstr
 
 
-checkRdir :: Text -> M.HashMap Text Value -> Bool 
+startJsonTest :: FilePath -> IO () 
+startJsonTest fp = do 
+  bstr <- L.readFile fp 
+  let pjsonresult = A.parse json bstr
+  case pjsonresult of 
+    A.Done _ jsonresult -> do 
+      let eresult :: Either String [JobInfo] = fromAeson jsonresult
+      case eresult of
+        Left str -> putStrLn str 
+        Right lst -> do 
+          print (Prelude.length lst)
+          print (Prelude.head lst)
+
+
+getJobInfoList :: FilePath -> IO [JobInfo]
+getJobInfoList fp = do
+  bstr <- L.readFile fp 
+  let pjsonresult = A.parse json bstr
+  case pjsonresult of 
+    A.Done _ jsonresult -> do 
+      let eresult :: Either String [JobInfo] = fromAeson jsonresult
+      case eresult of
+        Left str -> error str 
+        Right lst -> return lst 
+
+enumjobdetail :: JobDetail -> (Int,String)
+enumjobdetail (EventGen _ _) = (0,"eventgen")
+enumjobdetail (MathAnal str _ _ ) = (1,str) 
+
+
+getProcessBrief :: JobInfo -> String 
+getProcessBrief jinfo = let evset = jobdetail_evset . jobinfo_detail $ jinfo 
+                        in case evset of 
+                             EventSet psetup rsetup -> processBrief psetup
+
+getParamStr :: JobInfo -> String
+getParamStr jinfo =  let evset = jobdetail_evset . jobinfo_detail $ jinfo 
+                     in case evset of 
+                          EventSet psetup rsetup -> show $ param rsetup
+
+getSetNum :: JobInfo -> Int
+getSetNum jinfo = let evset = jobdetail_evset . jobinfo_detail $ jinfo 
+                  in case evset of 
+                       EventSet psetup rsetup -> setnum rsetup
+
+sortNgroupBy :: (Ord b, Eq b) => (a -> b) -> [a] -> [[a]]
+sortNgroupBy accessor = groupBy ((==) `on` accessor) . sortBy (compare `on` accessor) 
+
+startMultiAnalysis :: FilePath -> IO ()
+startMultiAnalysis fp = do
+  let getremotedir = webdav_remotedir . jobdetail_remotedir . jobinfo_detail 
+  jinfolst <- getJobInfoList fp 
+  let analtypegrouped = sortNgroupBy (enumjobdetail.jobinfo_detail) jinfolst 
+  
+  -- mapM_  ( print . enumjobdetail . jobinfo_detail . head ) analtypegrouped 
+      eventgengroup = head analtypegrouped 
+      dirgrouped = sortNgroupBy getremotedir eventgengroup
+      testdirgroup = (dirgrouped !! 4)
+      processgrouped = sortNgroupBy getProcessBrief testdirgroup -- (processBrief.evset_psetup.jobdetail_evset.jobinfo_detail) testdirgroup
+      testprocessgroup = head processgrouped 
+      paramgrouped = sortNgroupBy getParamStr testprocessgroup
+  mapM_ (print . getParamStr . head ) paramgrouped 
+  mapM_ (print . getSetNum )  (head paramgrouped )
+  -- mapM_ (print . getProcessBrief . head ) processgrouped 
+  -- mapM_  ( print . processBrief . evset_psetup . jobdetail_evset . jobinfo_detail . head ) processgrouped
+
+
+  {-
+  let -- sortedjinfolst = sortBy (compare `on` getremotedir)  jinfolst 
+      groupedjinfolst = sortNgroupBy getremotedir jinfolst --  filter (not.null) . groupBy ((==) `on` getremotedir) $ sortedjinfolst 
+  print $ length (sortNgroupBy (enumjobdetail.jobinfo_detail) (groupedjinfolst !! 4))
+  -- mapM_  ( putStrLn .  getremotedir . head ) groupedjinfolst
+  -- print (groupedjinfolst !! 4) 
+  -}
+
+
+checkRdir :: T.Text -> M.HashMap T.Text Value -> Bool 
 checkRdir rdir val = let Just (String txt) = M.lookup "rdir" val
                      in  (txt == rdir)
 
 
-getOneDetail :: Value -> Value -- M.HashMap Text Value 
+getOneDetail :: Value -> Value 
 getOneDetail onevalue = 
       let Object oneitem = onevalue
           Just v@(Object detail) = M.lookup "detail" oneitem 
