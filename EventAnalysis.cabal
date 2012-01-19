@@ -34,7 +34,13 @@ Library
                    LHEParser == 0.2.*, 
                    HEPUtil == 0.1.*,
                    HROOT == 0.7.*, 
-                   ttbar >= 0.1.999 && < 0.3
+                   ttbar >= 0.1.999 && < 0.3, 
+                   jobqueue-common >= 0.1.999, 
+                   aeson == 0.4.*, 
+                   vector == 0.9.*, 
+                   unordered-containers == 0.1.*, 
+                   madgraph-auto == 0.6.*, 
+                   blaze-builder == 0.3.*
   Exposed-Modules: 
                    HEP.Automation.EventAnalysis.ProgType
                    HEP.Automation.EventAnalysis.Job

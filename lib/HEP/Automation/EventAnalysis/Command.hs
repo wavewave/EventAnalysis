@@ -7,3 +7,6 @@ commandLineProcess :: EventAnalysis -> IO ()
 commandLineProcess (Single lhefp pdffp) = do 
   putStrLn "test called"
   startSingle lhefp pdffp 
+commandLineProcess JsonTest = do 
+  putStrLn "jsontest called"
+  startJsonTest
