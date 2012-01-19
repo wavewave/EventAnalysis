@@ -1,7 +1,8 @@
 Name:		EventAnalysis
-Version:	0.0
-Synopsis:	
-Description: 	
+Version:	0.0.999
+Synopsis:	LHEvent, LHCOAnalysis event processing using Enumerator
+Description: 	LHEvent and LHCOAnalysis common routines for event processing using enumerator so 
+                as to reduce some redundant works.
 License: 	BSD3
 License-file:	LICENSE
 Author:		Ian-Woo Kim

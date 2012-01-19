@@ -20,6 +20,7 @@ import HEP.Parser.LHEParser.DecayTop
 
 import Text.XML.Enumerator.Parse.Util
 
+import HEP.Automation.EventAnalysis.Print
 
 import HROOT
 
@@ -27,7 +28,7 @@ import HROOT
 data SingleFileAnalysis =  SingleFileAnalysisDraw1DHistFromLHE 
                            { datafile :: FilePath
                            , hist1d :: TH1D
-                           , hist1dfunc :: forall a b m. (MonadIO m) => 
+                           , hist1dfunc :: forall a b m. (Show a, MonadIO m) => 
                                            TH1D -> Iteratee (Maybe (a,b,[DecayTop PtlIDInfo])) m () 
                            }
 
@@ -44,7 +45,19 @@ doSingleFileAnalysis SingleFileAnalysisDraw1DHistFromLHE{..} = do
   let iter = do 
          header <- textLHEHeader
          parseEventIter $ decayTopEnee =$ ordDecayTopEnee =$ process
-  processFile iter datafile
+  r <- processFile iter datafile
+  putStrLn $ show r 
   return ()
 
+doReadXmlOnly :: FilePath -> IO ()
+doReadXmlOnly fp = do 
+    let -- process :: Double
+        process = enumZip3 countIter countMarkerIter (showSomeEvents 30) -- (hist1dfunc hist1d)  
+        -- test :: Double = parseEventIter
+    let iter = do 
+          header <- textLHEHeader
+          parseEventIter $ decayTopEnee =$ process
+    r <- processFile iter fp 
+    putStrLn $ show r 
+    return ()
 
