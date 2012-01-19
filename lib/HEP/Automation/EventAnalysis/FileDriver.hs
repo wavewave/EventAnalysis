@@ -25,12 +25,17 @@ import HEP.Automation.EventAnalysis.Print
 import HROOT
 
 
-data SingleFileAnalysis =  SingleFileAnalysisDraw1DHistFromLHE 
-                           { datafile :: FilePath
-                           , hist1d :: TH1D
-                           , hist1dfunc :: forall a b m. (Show a, MonadIO m) => 
-                                           TH1D -> Iteratee (Maybe (a,b,[DecayTop PtlIDInfo])) m () 
-                           }
+data SingleFileAnalysis =  
+  SingleFileAnalysisDraw1DHistFromLHE 
+  { datafile :: FilePath
+  , hist1d :: TH1D
+  , hist1dfunc :: forall a b m. (Show a, MonadIO m) => 
+                  TH1D -> Iteratee (Maybe (a,b,[DecayTop PtlIDInfo])) m () 
+  }
+  | SingleFileAnalysisCountingLHE
+  { datafile :: FilePath
+  , countfunc :: forall a b m. (MonadIO m) => DecayTopIteratee a b m () 
+  }
 
 processFile :: (Iteratee Event CountIO a) -> FilePath -> IO (a,Int)
 processFile iter fp = do 
@@ -38,16 +43,22 @@ processFile iter fp = do
   withFile fp ReadMode $ \ih -> runStateT (parseXmlFile ih iter) (0::Int)
                   
 
+lheventIter :: DecayTopIteratee LHEvent PtlInfoMap CountIO c -> Iteratee Event CountIO (Int,(),c)
+lheventIter action = do 
+  let process = enumZip3 countIter countMarkerIter action
+  header <- textLHEHeader
+  parseEventIter $ decayTopEnee =$ ordDecayTopEnee =$ process
+
+
 
 doSingleFileAnalysis :: SingleFileAnalysis -> IO ()
-doSingleFileAnalysis SingleFileAnalysisDraw1DHistFromLHE{..} = do 
-  let process = enumZip3 countIter countMarkerIter (hist1dfunc hist1d)  
-  let iter = do 
-         header <- textLHEHeader
-         parseEventIter $ decayTopEnee =$ ordDecayTopEnee =$ process
-  r <- processFile iter datafile
-  putStrLn $ show r 
-  return ()
+doSingleFileAnalysis SingleFileAnalysisDraw1DHistFromLHE{..} = 
+    processFile (lheventIter (hist1dfunc hist1d)) datafile >> return ()
+doSingleFileAnalysis SingleFileAnalysisCountingLHE{..} = 
+    processFile (lheventIter countfunc) datafile >> return ()
+
+
+-- | deprecated 
 
 doReadXmlOnly :: FilePath -> IO ()
 doReadXmlOnly fp = do 

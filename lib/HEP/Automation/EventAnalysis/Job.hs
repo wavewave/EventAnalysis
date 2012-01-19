@@ -24,7 +24,10 @@ startSingle lhefile pdffile = do
 
   let analysis = SingleFileAnalysisDraw1DHistFromLHE { datafile = lhefile 
                                                      , hist1d = h1 
-                                                     , hist1dfunc = const (countTTBarFBUsingIORef ref)
+                                                     , hist1dfunc = const (afbTTBar >>= liftIO . print)
+                                                                    -- const (countTTBar >>= liftIO . print) 
+                                                                    -- const shoutTTBar 
+                                                                    -- const (countTTBarFBUsingIORef ref)
                                                                     -- const showNonTTBarEvent
                                                                     -- const (countTTBarEventUsingIORef ref)
                                                                     -- const (showTTBarEvent)
@@ -36,5 +39,5 @@ startSingle lhefile pdffile = do
 
   -- doReadXmlOnly "ttbarevents.lhe"
 
-  n <- readIORef ref 
-  putStrLn $ " (f,b) = " ++ show n 
+  -- n <- readIORef ref 
+  -- putStrLn $ " (f,b) = " ++ show n 
