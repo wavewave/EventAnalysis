@@ -22,6 +22,7 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Vector as V
 import HEP.Automation.JobQueue.JobType
 import HEP.Automation.JobQueue.JobJson
+import HEP.Automation.MadGraph.Util 
 
 import qualified Data.Text as T
 -- import Data.Text hiding (take, groupBy,length, null, fitler)
@@ -33,7 +34,18 @@ import Data.Aeson.Encode as AE
 
 import Data.Function
 import Data.List 
+import Data.Char
+import HEP.Storage.WebDAV 
 import HEP.Storage.WebDAV.Type
+
+
+
+import System.Directory 
+
+webdav_config  :: WebDAVConfig 
+webdav_config = WebDAVConfig { webdav_path_wget = "/usr/local/bin/wget"
+                             , webdav_path_cadaver = "/Users/iankim/opt/homebrew/bin/cadaver"
+                             , webdav_baseurl = "http://top.physics.lsa.umich.edu:10080/webdav/montecarlo" } 
 
 startSingle :: FilePath -> FilePath -> IO () 
 startSingle lhefile pdffile = do 
@@ -103,6 +115,11 @@ getSetNum jinfo = let evset = jobdetail_evset . jobinfo_detail $ jinfo
                   in case evset of 
                        EventSet psetup rsetup -> setnum rsetup
 
+getFileName :: JobInfo -> FilePath 
+getFileName jinfo = let evset = jobdetail_evset . jobinfo_detail $ jinfo 
+                    in case evset of 
+                         EventSet psetup rsetup -> makeRunName psetup rsetup
+
 sortNgroupBy :: (Ord b, Eq b) => (a -> b) -> [a] -> [[a]]
 sortNgroupBy accessor = groupBy ((==) `on` accessor) . sortBy (compare `on` accessor) 
 
@@ -112,26 +129,31 @@ startMultiAnalysis fp = do
   jinfolst <- getJobInfoList fp 
   let analtypegrouped = sortNgroupBy (enumjobdetail.jobinfo_detail) jinfolst 
   
-  -- mapM_  ( print . enumjobdetail . jobinfo_detail . head ) analtypegrouped 
+
       eventgengroup = head analtypegrouped 
       dirgrouped = sortNgroupBy getremotedir eventgengroup
       testdirgroup = (dirgrouped !! 4)
-      processgrouped = sortNgroupBy getProcessBrief testdirgroup -- (processBrief.evset_psetup.jobdetail_evset.jobinfo_detail) testdirgroup
+      processgrouped = sortNgroupBy getProcessBrief testdirgroup 
       testprocessgroup = head processgrouped 
       paramgrouped = sortNgroupBy getParamStr testprocessgroup
-  mapM_ (print . getParamStr . head ) paramgrouped 
-  mapM_ (print . getSetNum )  (head paramgrouped )
-  -- mapM_ (print . getProcessBrief . head ) processgrouped 
-  -- mapM_  ( print . processBrief . evset_psetup . jobdetail_evset . jobinfo_detail . head ) processgrouped
+      testparamgroup = head paramgrouped 
 
+      testinfo = head testparamgroup 
+  
+  let fp = (map toLower (getFileName testinfo) ) ++ "_pythia_events.lhe.gz"
+      wrdir = (jobdetail_remotedir . jobinfo_detail ) testinfo
 
-  {-
-  let -- sortedjinfolst = sortBy (compare `on` getremotedir)  jinfolst 
-      groupedjinfolst = sortNgroupBy getremotedir jinfolst --  filter (not.null) . groupBy ((==) `on` getremotedir) $ sortedjinfolst 
-  print $ length (sortNgroupBy (enumjobdetail.jobinfo_detail) (groupedjinfolst !! 4))
-  -- mapM_  ( putStrLn .  getremotedir . head ) groupedjinfolst
-  -- print (groupedjinfolst !! 4) 
-  -}
+  setCurrentDirectory "working"
+  fetchFile webdav_config wrdir fp  
+
+  let analysis = SingleFileAnalysisCountingLHE { datafile = fp 
+                                               , countfunc = countFBTTBar >>= liftIO . print } 
+
+  doSingleFileAnalysis analysis 
+
+  -- mapM_ (print . getFileName ) testparamgroup
+  -- mapM_ (print . getSetNum )  (head paramgrouped )
+
 
 
 checkRdir :: T.Text -> M.HashMap T.Text Value -> Bool 
@@ -152,24 +174,14 @@ convertJobInfo (Object info) =
       ninfo = M.insert "dependency" (Array V.empty)
               . M.adjust (const (convertOneDetail d)) "detail" 
               $ info
-      
   in  (Object ninfo)
 
 convertOneDetail :: Value -> Value
 convertOneDetail (Object item) = 
-   let -- item = V.head details 
-       -- filtered = V.filter (checkRdir "paper3/ttbar_LHC_c1v_scan") details 
-       Just (Object evset) = M.lookup "evset" item
+   let Just (Object evset) = M.lookup "evset" item
        Just (Object rsetup) = M.lookup "rsetup" evset
        nrsetup = M.insert "lhesanitizer" (String "NoLHESanitize") rsetup 
        nevset = M.adjust (const (Object nrsetup)) "rsetup" evset
        nitem = M.adjust (const (Object nevset)) "evset" item 
    in  (Object nitem)
 convertOneDetail _ = error "cannot deal with it" 
-
-   -- print $ M.lookup "JobType" (V.head filtered)
-   -- print evset 
-   --  print rsetup 
-   --    print (toAeson NoLHESanitize)
-   --   print nrsetup
-   --   print nevset 
