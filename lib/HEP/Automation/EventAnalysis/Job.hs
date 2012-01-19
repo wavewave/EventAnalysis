@@ -39,7 +39,7 @@ import HEP.Storage.WebDAV
 import HEP.Storage.WebDAV.Type
 
 
-
+import System.IO
 import System.Directory 
 
 webdav_config  :: WebDAVConfig 
@@ -123,8 +123,25 @@ getFileName jinfo = let evset = jobdetail_evset . jobinfo_detail $ jinfo
 sortNgroupBy :: (Ord b, Eq b) => (a -> b) -> [a] -> [[a]]
 sortNgroupBy accessor = groupBy ((==) `on` accessor) . sortBy (compare `on` accessor) 
 
+
+singleJob :: Handle -> JobInfo -> IO () 
+singleJob hndl jinfo = do 
+  -- testinfo = head testparamgroup 
+  let fnbase = getFileName jinfo 
+  let fp = (map toLower fnbase) ++ "_pythia_events.lhe.gz"
+      wrdir = (jobdetail_remotedir . jobinfo_detail ) jinfo
+  fetchFile webdav_config wrdir fp  
+  let analysis = SingleFileAnalysisCountingLHE { datafile = fp 
+                                               , countfunc = do r <- countFBTTBar 
+                                                                liftIO $ hPutStrLn hndl (fnbase ++ " : " ++ show r)
+                                               }
+  doSingleFileAnalysis analysis 
+
+
+
 startMultiAnalysis :: FilePath -> IO ()
 startMultiAnalysis fp = do
+  hndl <- openFile "test.log" WriteMode
   let getremotedir = webdav_remotedir . jobdetail_remotedir . jobinfo_detail 
   jinfolst <- getJobInfoList fp 
   let analtypegrouped = sortNgroupBy (enumjobdetail.jobinfo_detail) jinfolst 
@@ -132,28 +149,21 @@ startMultiAnalysis fp = do
 
       eventgengroup = head analtypegrouped 
       dirgrouped = sortNgroupBy getremotedir eventgengroup
-      testdirgroup = (dirgrouped !! 4)
+      testdirgroup = (dirgrouped !! 27)
       processgrouped = sortNgroupBy getProcessBrief testdirgroup 
       testprocessgroup = head processgrouped 
       paramgrouped = sortNgroupBy getParamStr testprocessgroup
       testparamgroup = head paramgrouped 
 
-      testinfo = head testparamgroup 
-  
-  let fp = (map toLower (getFileName testinfo) ) ++ "_pythia_events.lhe.gz"
-      wrdir = (jobdetail_remotedir . jobinfo_detail ) testinfo
-
   setCurrentDirectory "working"
-  fetchFile webdav_config wrdir fp  
+  mapM_ (singleJob hndl . head) paramgrouped 
+  hClose hndl 
 
-  let analysis = SingleFileAnalysisCountingLHE { datafile = fp 
-                                               , countfunc = countFBTTBar >>= liftIO . print } 
-
-  doSingleFileAnalysis analysis 
+  -- mapM_ ( \x -> putStrLn $ show ( fst x , (getremotedir.head.snd) x ) )  (zip [0..] dirgrouped) 
 
   -- mapM_ (print . getFileName ) testparamgroup
   -- mapM_ (print . getSetNum )  (head paramgrouped )
-
+  
 
 
 checkRdir :: T.Text -> M.HashMap T.Text Value -> Bool 
