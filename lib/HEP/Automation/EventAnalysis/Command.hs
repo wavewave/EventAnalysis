@@ -13,4 +13,7 @@ commandLineProcess (JsonTest fp) = do
 commandLineProcess (MultiAnalysis fp) = do 
   putStrLn "jsontest called"
   startMultiAnalysis fp
+commandLineProcess (Junjie lhefp outfp) = do 
+  putStrLn "test called"
+  startJunjie lhefp outfp 
 

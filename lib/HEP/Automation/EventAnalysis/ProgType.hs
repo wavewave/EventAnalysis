@@ -8,6 +8,9 @@ data EventAnalysis = Single { datafilename :: FilePath
                             , outputpdffilename :: FilePath 
                             }
                    | JsonTest { jsonfilename :: FilePath } 
+                   | Junjie { datafilename :: FilePath 
+                            , outputpdffilename :: FilePath 
+                            }
                    | MultiAnalysis { jsonfilename :: FilePath }
               deriving (Show,Data,Typeable)
 
@@ -15,6 +18,11 @@ single :: EventAnalysis
 single = Single { datafilename = def &= typ "LHEFILE" &= argPos 0 
                 , outputpdffilename = def &= typ "PDFFILE" &= argPos 1 
                 } 
+
+junjie :: EventAnalysis
+junjie = Junjie { datafilename = def &= typ "LHEFILE" &= argPos 0 
+                , outputpdffilename = def &= typ "PDFFILE" &= argPos 1 
+                }
 
 jsontest :: EventAnalysis
 jsontest = JsonTest { jsonfilename = def &= typ "JSONFILE" &= argPos 0 } 
@@ -24,5 +32,5 @@ multianalysis = MultiAnalysis { jsonfilename = def &= typ "JSONFILE" &= argPos 0
 
 
 mode :: EventAnalysis
-mode = modes [single, jsontest, multianalysis]
+mode = modes [single, junjie, jsontest, multianalysis]
 

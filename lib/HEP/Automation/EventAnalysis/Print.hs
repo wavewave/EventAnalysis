@@ -14,7 +14,8 @@ dummyanalysis = const (return ())
 showSomeEvents :: (MonadIO m) => Integer -> Iteratee (Maybe (a,b,[DecayTop PtlIDInfo])) m ()
 showSomeEvents n = do 
   lst <- EL.take n 
-  mapM_ (maybe (return ()) $ \(_,_,dtops) -> do mapM_ (liftIO . print . fmap pdgid ) dtops 
+  mapM_ (maybe (return ()) $ \(_,_,dtops) -> do -- mapM_ (liftIO . print . fmap pdgid ) dtops 
+                                                mapM_ (liftIO . print) dtops 
                                                 liftIO $ putStrLn "-----------------------" ) lst 
 
 
