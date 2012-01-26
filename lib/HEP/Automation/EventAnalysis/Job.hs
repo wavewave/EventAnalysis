@@ -6,6 +6,7 @@ import HROOT
 import HEP.Automation.EventAnalysis.FileDriver 
 import HEP.Automation.EventAnalysis.Print 
 
+import Control.Applicative 
 import Control.Monad
 import Control.Monad.Trans
 
@@ -17,6 +18,9 @@ import HEP.Physics.TTBar.Analysis.TopPairParton
 import qualified Data.ByteString.Lazy as L
 import Data.Aeson
 import qualified Data.Attoparsec.Lazy as A
+import qualified Data.Attoparsec.Char8 as C
+import qualified Data.ByteString as S 
+import qualified Data.Attoparsec as AS
 import Data.Attoparsec.Char8
 import Control.Applicative ((<|>))
 
@@ -42,6 +46,10 @@ import Data.Char
 import HEP.Storage.WebDAV 
 import HEP.Storage.WebDAV.Type
 
+import Data.Mathematica
+import Data.Mathematica.Parser
+
+import System.FilePath
 
 import System.IO
 import System.Directory 
@@ -51,6 +59,11 @@ import Data.Enumerator ((=$))
 import qualified Data.Enumerator.List as EL 
 
 import HEP.Parser.LHEParser.Type 
+
+
+import HEP.Util.GHC.Plugins
+import Unsafe.Coerce
+
 
 webdav_config  :: WebDAVConfig 
 webdav_config = WebDAVConfig { webdav_path_wget = "/usr/local/bin/wget"
@@ -74,23 +87,6 @@ startJunjie lhefile outfile =
     withFile outfile WriteMode $ \h -> processFile (lheventIter $  zipStreamWithList [1..]  =$ iter h ) lhefile >> hPutStrLn h "0 0 " >> return () 
   where iter h = EL.foldM (\() a -> maybe (return ()) (\(n,x)->liftIO $ printfunc h n x) a) ()  
 
-{-
-do 
-          mel <- EL.head 
-          -- let newlst = zip [1..] lst
-          maybe (return ()) (\mx -> maybe (return ()) (\(n,x)->liftIO $ printfunc h n x) mx >> f h) mel  
-          
-          -- mapM_ (\(n,x)->liftIO $ (printfunc h n x)) newlst 
-
-          {- mapM_ (maybe (return ()) $ \(n,(a,_,dtops)) -> do -- mapM_ (liftIO . print . fmap pdgid ) dtops 
-                                                            liftIO . print $ (n,a) -- mapM_ (liftIO . print) dtops 
-                                                            liftIO $ putStrLn "-----------------------" ) newlst  -}
-
-
---           mapM_ (maybe (return ()) $ \(a,_,dtops) -> do mapM_ (liftIO . print) a
---                                                         liftIO $ putStrLn "------------------") lst 
-
--}
 
 printfunc :: Handle -> Int -> Maybe (LHEvent,a,b) -> IO () 
 printfunc h n (Just (ev@(LHEvent einfo pinfos),_,_)) = do
@@ -104,7 +100,7 @@ printfunc h n (Just (ev@(LHEvent einfo pinfos),_,_)) = do
 printfunc h n Nothing = return () 
 
 
-
+{-
 
 startJsonConvert :: FilePath -> FilePath -> IO ()
 startJsonConvert oldfile newfile = do 
@@ -113,8 +109,9 @@ startJsonConvert oldfile newfile = do
   case pjsonresult of 
     A.Done _ (Array jsonresult) -> do 
       let nvec = V.map convertJobInfo jsonresult
-      let nbstr = toLazyByteString . AE.fromValue $ Array nvec
+      let nbstr = . toByteString . AE.fromValue $ Array nvec
       L.writeFile newfile nbstr  
+-}
 
 
 startJsonTest :: FilePath -> IO () 
@@ -179,8 +176,8 @@ singleJob hndl jinfo = do
   b <- checkNdownloadFile webdav_config wrdir fp -- fetchFile webdav_config wrdir fp  
   when b $ do 
     let analysis = SingleFileAnalysisCountingLHE { datafile = fp 
-                                               , countfunc = do r <- countFBTTBar 
-                                                                liftIO $ hPutStrLn hndl (fnbase ++ " : " ++ show r)
+                                               , countfunc = do r <- countFBHLTTBar 
+                                                                liftIO $ hPutStrLn hndl (fnbase ++ " : high = " ++ show (high r) ++ " , low = " ++ show (low r) )
                                                }
     doSingleFileAnalysis analysis 
 
@@ -190,9 +187,10 @@ crossSectionReadJob hndl jinfo = do
   let fnbase = getFileName jinfo 
       fp = (map toLower fnbase) ++ "_pythia.log"
       wrdir = (jobdetail_remotedir . jobinfo_detail ) jinfo 
-  fetchFile webdav_config wrdir fp 
-  xsec <- getCrossSection fp 
-  hPutStrLn hndl (fnbase ++ " : " ++ show xsec)
+  b <- checkNdownloadFile webdav_config wrdir fp  -- fetchFile webdav_config wrdir fp 
+  when b $ do 
+    xsec <- getCrossSection fp 
+    hPutStrLn hndl (fnbase ++ " : " ++ show xsec)
     
 startMultiAnalysis :: FilePath -> IO ()
 startMultiAnalysis fp = do
@@ -202,7 +200,7 @@ startMultiAnalysis fp = do
   let analtypegrouped = sortNgroupBy (enumjobdetail.jobinfo_detail) jinfolst 
       eventgengroup = head analtypegrouped 
       dirgrouped = sortNgroupBy getremotedir eventgengroup
-      testdirgroup = (dirgrouped !! 33 ) -- 43 40 38 36 34 33 31 29 27 
+      testdirgroup = (dirgrouped !! 43 ) -- 43 40 38 36 34 33 31 29 27 
       processgrouped = sortNgroupBy getProcessBrief testdirgroup 
       testprocessgroup = head processgrouped 
       paramgrouped = sortNgroupBy getParamStr testprocessgroup
@@ -210,9 +208,9 @@ startMultiAnalysis fp = do
 
   
   setCurrentDirectory "working"
-  -- mapM_ (singleJob hndl . head) paramgrouped 
-  mapM_ (crossSectionReadJob hndl . head) paramgrouped  
- 
+  mapM_ (singleJob hndl . head) paramgrouped 
+  -- mapM_ (crossSectionReadJob hndl . head) paramgrouped  
+  -- mapM_ (binnedPassedEvtsJob hndl . head) paramgrouped
 
   hClose hndl 
   
@@ -270,3 +268,125 @@ parseCrossSection = do
   takeTill (== 'C') 
   (try ( string "Cross section (pb):" >> skipSpace >> double )
    <|> (char 'C' >> parseCrossSection ))
+
+readMathematicaData :: Handle -> FilePath -> IO () 
+readMathematicaData h fp = do 
+  putStrLn $ "reading " ++ fp 
+  bstr <- S.readFile fp
+  let r = AS.parseOnly mathdatafile bstr
+  either print  (binpassevtformatter h) r 
+
+binpassevtformatter :: Handle -> [[MExpression]] -> IO ()
+binpassevtformatter h (l1:l2:l3:l4:[]) = do 
+  let y1:y2:[] = l1
+      [y3] = l2 
+      y4:y5:y6:[] = l3 
+      -- y7:y8:[] = l4 
+      MReal sigma_tt = y1 
+      MInteger num_evt = y2 
+      MInteger num_passevt = y3 
+      MExp _ ll1 = y4 
+      -- MExp _ ll2 = y5
+      MExp _ ll3 = y6
+      [ bak, for ] = ll3 
+      MExp _ [ MInteger lowb, MInteger highb ] = bak 
+      MExp _ [ MInteger lowf, MInteger highf ] = for 
+  putStrLn $ "sigma_tt = " ++ show sigma_tt
+  putStrLn $ "num_evt = " ++ show num_evt
+  putStrLn $ "num_passevt = " ++ show num_passevt 
+  -- putStrLn $ "ll2 = " ++ show ll2
+  putStrLn $ "lowf = " ++ show lowf
+  putStrLn $ "lowb = " ++ show lowb 
+  putStrLn $ "highf = " ++ show highf 
+  putStrLn $ "highb = " ++ show highb 
+  
+  hPutStrLn h $ "sigma_tt = " ++ show sigma_tt ++ " , " 
+                ++ "num_evt = " ++ show num_evt ++ " , " 
+                ++ "num_passevt = " ++ show num_passevt ++ " , " 
+                ++ "(lowf,lowb) = " ++ show (lowf,lowb) ++ " , " 
+                ++ "(highf,highb) = " ++ show (highf,highb)
+  
+
+binnedPassedEvtsJob :: Handle -> JobInfo -> IO () 
+binnedPassedEvtsJob hndl jinfo = do 
+  let fnbase = getFileName jinfo 
+  let fp = (map toLower fnbase) ++ "_binned_passedevts.dat"
+      wrdir = (jobdetail_remotedir . jobinfo_detail ) jinfo 
+  b <- checkNdownloadFile webdav_config wrdir fp 
+  when b $ do 
+    hPutStr hndl ( fnbase ++ " : " )  
+    readMathematicaData hndl fp 
+
+
+startLowMassAnalysis :: String -> IO () 
+startLowMassAnalysis mname = do 
+  putStrLn $ " compiling " ++ mname 
+  let fullmname = "HEP.Automation.MadGraph.Dataset." ++ mname 
+      datasetdir = "/Users/iankim/mac/data/madgraph-auto-dataset"
+  (>>=) (pluginCompile datasetdir fullmname "(eventsets,webdavdir)") $ 
+    either error $ \value -> do 
+      let (eventsets,webdavdir) = unsafeCoerce value :: ([EventSet],WebDAVRemoteDir)
+          remotepath = "/Users/iankim/mac/workspace/teststorage" </> webdav_remotedir webdavdir 
+      withFile "testlow.log" WriteMode $ \h -> 
+        mapM_ (startEventSetXSec h remotepath) eventsets 
+        -- mapM_ (startEventSetAFBHL h remotepath) eventsets -- (Prelude.take 1 eventsets )
+
+startEventSetXSec :: Handle -> FilePath -> EventSet -> IO ()
+startEventSetXSec h fp evset = do 
+  cdir <- getCurrentDirectory 
+  case evset of 
+    EventSet psetup rsetup -> do 
+      let rname = makeRunName psetup rsetup 
+          nfilename = rname ++ "_banner.txt"
+      setCurrentDirectory "working"
+      putStrLn "copying banner"
+      copyFile (fp </> nfilename) nfilename
+      bstr <- L.readFile nfilename 
+      let pxsec = A.parse xsecFromBanner bstr 
+      case pxsec of 
+        A.Done _ xsec -> do 
+          hPutStrLn h ( rname ++ " : " ++ show xsec )  
+      setCurrentDirectory cdir
+
+
+startEventSetAFB :: Handle -> FilePath -> EventSet -> IO ()
+startEventSetAFB h fp evset = do 
+  cdir <- getCurrentDirectory 
+  case evset of 
+    EventSet psetup rsetup -> do 
+      let rname = makeRunName psetup rsetup 
+          nfilename = rname ++ "_unweighted_events.lhe.gz"
+      setCurrentDirectory "working"
+      copyFile (fp </> nfilename) nfilename
+      let analysis = SingleFileAnalysisCountingLHE { datafile = nfilename  
+                                                   , countfunc = do r <- countFBTTBar 
+                                                                    liftIO $ hPutStrLn h (rname ++ " : " ++ show r)
+                                                   }
+      doSingleFileAnalysis analysis 
+      setCurrentDirectory cdir 
+
+startEventSetAFBHL :: Handle -> FilePath -> EventSet -> IO ()
+startEventSetAFBHL h fp evset = do 
+  cdir <- getCurrentDirectory 
+  case evset of 
+    EventSet psetup rsetup -> do 
+      let rname = makeRunName psetup rsetup 
+          nfilename = rname ++ "_unweighted_events.lhe.gz"
+      setCurrentDirectory "working"
+      copyFile (fp </> nfilename) nfilename
+      let analysis = SingleFileAnalysisCountingLHE { datafile = nfilename  
+                                                   , countfunc = do r <- countFBHLTTBar 
+                                                                    liftIO $ hPutStrLn h (rname ++ " : high = " ++ show (high r) ++ " , low = " ++ show (low r) )
+                                                   }
+      doSingleFileAnalysis analysis 
+      setCurrentDirectory cdir 
+
+
+xsecFromBanner :: Parser Double 
+xsecFromBanner = do 
+  takeTill (== '#') 
+  (try (string "#  Integrated weight (pb)  :" *> skipSpace *> (many (C.satisfy (C.inClass ".0123456789E+-")) >>= return . readDouble . ('0':)) )
+   <|> ( char '#' *> xsecFromBanner ) )
+
+
+       

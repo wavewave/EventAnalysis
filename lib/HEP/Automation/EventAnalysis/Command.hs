@@ -16,4 +16,6 @@ commandLineProcess (MultiAnalysis fp) = do
 commandLineProcess (Junjie lhefp outfp) = do 
   putStrLn "test called"
   startJunjie lhefp outfp 
+commandLineProcess (LowMassAnalysis hsfp) = do 
+  startLowMassAnalysis hsfp 
 

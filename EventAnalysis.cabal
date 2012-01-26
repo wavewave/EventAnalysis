@@ -36,7 +36,7 @@ Library
                    HROOT == 0.7.*, 
                    ttbar >= 0.1.999 && < 0.3, 
                    jobqueue-common >= 0.1.999, 
-                   aeson == 0.4.*, 
+                   aeson == 0.5.*, 
                    vector == 0.9.*, 
                    unordered-containers == 0.1.*, 
                    madgraph-auto == 0.6.*, 
@@ -47,7 +47,9 @@ Library
                    containers == 0.4.*, 
                    attoparsec == 0.10.*, 
                    bytestring == 0.9.*, 
-                   xml-enumerator == 0.4.*
+                   xml-enumerator == 0.4.*, 
+                   mathematica-data >= 0.0.999 && < 0.2, 
+                   jobtester == 0.1.*
   Exposed-Modules: 
                    HEP.Automation.EventAnalysis.ProgType
                    HEP.Automation.EventAnalysis.Job
