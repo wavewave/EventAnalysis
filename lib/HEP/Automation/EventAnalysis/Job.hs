@@ -68,7 +68,7 @@ import Unsafe.Coerce
 webdav_config  :: WebDAVConfig 
 webdav_config = WebDAVConfig { webdav_path_wget = "/usr/local/bin/wget"
                              , webdav_path_cadaver = "/Users/iankim/opt/homebrew/bin/cadaver"
-                             , webdav_baseurl = "http://top.physics.lsa.umich.edu:10080/webdav/montecarlo" } 
+                             , webdav_baseurl = "http://susy.physics.lsa.umich.edu:8080/mc" } 
 
 startSingle :: FilePath -> FilePath -> IO () 
 startSingle lhefile pdffile = do 
@@ -192,8 +192,8 @@ crossSectionReadJob hndl jinfo = do
     xsec <- getCrossSection fp 
     hPutStrLn hndl (fnbase ++ " : " ++ show xsec)
     
-startMultiAnalysis :: FilePath -> IO ()
-startMultiAnalysis fp = do
+startMultiAnalysisOld :: FilePath -> IO ()
+startMultiAnalysisOld fp = do
   hndl <- openFile "test.log" WriteMode
   let getremotedir = webdav_remotedir . jobdetail_remotedir . jobinfo_detail 
   jinfolst <- getJobInfoList fp 
@@ -221,6 +221,9 @@ startMultiAnalysis fp = do
   -- mapM_ (print . getFileName ) testparamgroup
   -- mapM_ (print . getSetNum )  (head paramgrouped )
   
+startMultiAnalysis :: FilePath -> IO ()
+startMultiAnalysis fp = do 
+  putStrLn "new multi analysis " 
 
 
 checkRdir :: T.Text -> M.HashMap T.Text Value -> Bool 
@@ -326,26 +329,36 @@ startLowMassAnalysis mname = do
   (>>=) (pluginCompile datasetdir fullmname "(eventsets,webdavdir)") $ 
     either error $ \value -> do 
       let (eventsets,webdavdir) = unsafeCoerce value :: ([EventSet],WebDAVRemoteDir)
-          remotepath = "/Users/iankim/mac/workspace/teststorage" </> webdav_remotedir webdavdir 
+          -- remotepath = "http://susy.physics.lsa.umich.edu:8080/mc" </> -- 
+          remotepath = webdav_remotedir webdavdir 
       withFile "testlow.log" WriteMode $ \h -> 
-        mapM_ (startEventSetXSec h remotepath) eventsets 
-        -- mapM_ (startEventSetAFBHL h remotepath) eventsets -- (Prelude.take 1 eventsets )
+        -- mapM_ (startEventSetXSec h webdavdir) eventsets 
+        mapM_ (startEventSetAFBHL h webdavdir) eventsets -- (Prelude.take 1 eventsets )
 
-startEventSetXSec :: Handle -> FilePath -> EventSet -> IO ()
-startEventSetXSec h fp evset = do 
+startEventSetXSec :: Handle -> WebDAVRemoteDir -> EventSet -> IO ()
+startEventSetXSec h wrdir evset = do 
   cdir <- getCurrentDirectory 
   case evset of 
     EventSet psetup rsetup -> do 
       let rname = makeRunName psetup rsetup 
-          nfilename = rname ++ "_banner.txt"
+          -- nfilename = rname ++ "_banner.txt"
+          nfilename = rname ++ "_pythia.log"
+
       setCurrentDirectory "working"
       putStrLn "copying banner"
-      copyFile (fp </> nfilename) nfilename
-      bstr <- L.readFile nfilename 
-      let pxsec = A.parse xsecFromBanner bstr 
-      case pxsec of 
-        A.Done _ xsec -> do 
-          hPutStrLn h ( rname ++ " : " ++ show xsec )  
+      -- copyFile (fp </> nfilename) nfilename
+      b <- checkNdownloadFile webdav_config wrdir nfilename 
+      when b $ do 
+        {- 
+        bstr <- L.readFile nfilename 
+        let pxsec = A.parse xsecFromBanner bstr 
+       
+        case pxsec of 
+          A.Done _ xsec -> do 
+            hPutStrLn h ( rname ++ " : " ++ show xsec )  
+        -}
+        xsec <- getCrossSection nfilename 
+        hPutStrLn h (rname ++ " : " ++ show xsec)
       setCurrentDirectory cdir
 
 
@@ -365,20 +378,23 @@ startEventSetAFB h fp evset = do
       doSingleFileAnalysis analysis 
       setCurrentDirectory cdir 
 
-startEventSetAFBHL :: Handle -> FilePath -> EventSet -> IO ()
-startEventSetAFBHL h fp evset = do 
+startEventSetAFBHL :: Handle -> WebDAVRemoteDir -> EventSet -> IO ()
+startEventSetAFBHL h wrdir evset = do 
   cdir <- getCurrentDirectory 
   case evset of 
     EventSet psetup rsetup -> do 
       let rname = makeRunName psetup rsetup 
-          nfilename = rname ++ "_unweighted_events.lhe.gz"
+          nfilename = rname ++ "_pythia_events.lhe.gz" -- "_unweighted_events.lhe.gz"
       setCurrentDirectory "working"
-      copyFile (fp </> nfilename) nfilename
-      let analysis = SingleFileAnalysisCountingLHE { datafile = nfilename  
-                                                   , countfunc = do r <- countFBHLTTBar 
-                                                                    liftIO $ hPutStrLn h (rname ++ " : high = " ++ show (high r) ++ " , low = " ++ show (low r) )
-                                                   }
-      doSingleFileAnalysis analysis 
+      -- copyFile (fp </> nfilename) nfilename
+      b <- checkNdownloadFile webdav_config wrdir nfilename 
+      
+      when b $ do 
+        let analysis = SingleFileAnalysisCountingLHE { datafile = nfilename  
+                                                     , countfunc = do r <- countFBHLTTBar 
+                                                                      liftIO $ hPutStrLn h (rname ++ " : high = " ++ show (high r) ++ " , low = " ++ show (low r) )
+                                                     }
+        doSingleFileAnalysis analysis 
       setCurrentDirectory cdir 
 
 

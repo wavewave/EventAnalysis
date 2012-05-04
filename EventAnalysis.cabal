@@ -48,8 +48,7 @@ Library
                    attoparsec == 0.10.*, 
                    bytestring == 0.9.*, 
                    xml-enumerator == 0.4.*, 
-                   mathematica-data >= 0.0.999 && < 0.2, 
-                   jobtester == 0.1.*
+                   mathematica-data >= 0.0.999 && < 0.2
   Exposed-Modules: 
                    HEP.Automation.EventAnalysis.ProgType
                    HEP.Automation.EventAnalysis.Job
