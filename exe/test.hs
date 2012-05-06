@@ -8,6 +8,8 @@ import HEP.Parser.LHEParser.DecayTop
 import HEP.Automation.EventAnalysis.FileDriver 
 import HEP.Automation.EventAnalysis.Print 
 import HEP.Util.Functions
+
+import Data.List.Split 
 import Data.Vector.Storable ((!))
 
 import Debug.Trace 
@@ -18,44 +20,10 @@ import Control.Monad.Trans
 import Text.Printf
 import qualified  Numeric.LinearAlgebra as NL
 
---import Data.IORef
-
---import HEP.Automation.MadGraph.SetupType
---import HEP.Physics.TTBar.Analysis.TopPairParton
-
---import qualified Data.ByteString.Lazy as L
---import Data.Aeson
---import qualified Data.Attoparsec.Lazy as A
---import qualified Data.Attoparsec.Char8 as C
---import qualified Data.ByteString as S 
---import qualified Data.Attoparsec as AS
---import Data.Attoparsec.Char8
---import Control.Applicative ((<|>))
-
---import HEP.Automation.JobQueue.JobQueue
---import qualified Data.IntMap as IM
---import qualified Data.HashMap.Strict as M
---import qualified Data.Vector as V
---import HEP.Automation.JobQueue.JobType
---import HEP.Automation.JobQueue.JobJson
---import HEP.Automation.MadGraph.Util 
-
--- import qualified Data.Text as T
--- import Data.Text hiding (take, groupBy,length, null, fitler)
 import Data.Either 
--- import Data.Text.Lazy.Builder
--- import Data.Text.Lazy.Encoding
--- import Blaze.ByteString.Builder 
--- import Data.Aeson.Encode as AE
-
 import Data.Function
 import Data.List 
 import Data.Char
--- import HEP.Storage.WebDAV 
--- import HEP.Storage.WebDAV.Type
-
--- import Data.Mathematica
--- import Data.Mathematica.Parser
 
 import System.FilePath
 
@@ -68,13 +36,16 @@ import qualified Data.Enumerator.List as EL
 
 import HEP.Parser.LHEParser.Type 
 
+-- | 
 
+zipWithM3 :: (Monad m) => (a -> b -> c -> m d) -> [a] -> [b] -> [c] -> m [d]
+zipWithM3 f xs ys zs = sequence (zipWith3 f xs ys zs)
 
-
+-- | 
 
 main :: IO () 
 main = do 
-  startMine "test.lhe.gz" "test2.lhe.gz" 
+  startMine "test.lhe.gz" "test2.lhe.gz" "test3.lhe.gz"
             "testoutput.dat"
 
 -- | 
@@ -87,12 +58,13 @@ startJunjie lhefile outfile =
 -- | 
 
 startMine :: FilePath  -- ^ main hard process
-          -> FilePath  -- ^ decay process
+          -> FilePath  -- ^ decay process1
+          -> FilePath  -- ^ decay process2
           -> FilePath  -- ^ output 
           -> IO () 
-startMine lhefile lhefile2 outfile =
-    -- withFile outfile WriteMode $ 
-    flip ($) stdout $
+startMine lhefile lhefile2 lhefile3 outfile =
+    withFile outfile WriteMode $ 
+    -- flip ($) stdout $
       \h -> do 
         ((_,_,lst1),_) <- processFile 
                             (lheventIter $  zipStreamWithList [1..]  =$ iter h ) 
@@ -100,22 +72,23 @@ startMine lhefile lhefile2 outfile =
         ((_,_,lst2),_) <- processFile 
                             (lheventIter $  zipStreamWithList [1..]  =$ iter h ) 
                             lhefile2 
-
-        zipWithM (iw h) lst1 lst2  
+        ((_,_,lst3),_) <- processFile 
+                            (lheventIter $ zipStreamWithList [1..] =$ iter h )
+                            lhefile3 
+        zipWithM3 (iw h) lst1 lst2 lst3
         hPutStrLn h $ "lst1 = " ++ show (length lst1)
         hPutStrLn h $ "lst2 = " ++ show (length lst2)
---            >> hPutStrLn h "0 0 " 
---            >> return () 
-  where iw h (Just (_,a)) (Just (_,b)) = interwine h a b
-        iw _ _ _ = return () 
+        hPutStrLn h $ "lst3 = " ++ show (length lst3)
+  where iw h (Just (_,a)) (Just (_,b)) (Just (_,c)) = interwine3 h a b c
+        iw _ _ _ _ = return () 
         iter h = EL.foldM (\lst a -> maybe (return lst) 
-                                       (\(n,x) -> {- liftIO $ printfunc h n x >> -} return (a:lst) ) a) 
-                          [] -- ()  
+                                       (\(n,x) -> return (a:lst) ) a) 
+                          []
 
 -- | 
 
-getN1 :: [PtlInfo] -> [PtlInfo]
-getN1 ptls = filter (\x -> idup x == 1000022) ptls   
+getN1 :: [PtlInfo] -> ([PtlInfo],[PtlInfo])
+getN1 = break (\x -> idup x == 1000022 && istup x == 1)    
 
 -- | 
 
@@ -146,7 +119,8 @@ spinAdj spn pinfo = pinfo { spinup = spn * spinup pinfo }
 -- | 
 
 idAdj :: (Int -> Int) -> PtlInfo -> PtlInfo 
-idAdj idfunc pinfo = pinfo { mothup = (idfunc mid1, idfunc mid1 {- mid2 -} ) } -- because of bug in madgraph 
+idAdj idfunc pinfo = pinfo { mothup = (idfunc mid1, idfunc mid1 {- mid2 -} ) } 
+                     -- because of bug in madgraph 
   where (mid1,_mid2) = mothup pinfo
 
 -- | 
@@ -161,43 +135,37 @@ adjustIdMomSpin (opinfo,rpinfo) = map (idAdj idfunc . spinAdj spn . boostBack mo
 
 -- | 
 
-interwine :: Handle -> Maybe (LHEvent,a,b) -> Maybe (LHEvent,a,b) -> IO () 
-interwine h (Just (LHEvent einfo1 pinfos1,_,_)) (Just (LHEvent einfo2 pinfos2,_,_)) = do 
+interwine3 :: Handle -> Maybe (LHEvent,a,b) -> Maybe (LHEvent,a,b) -> Maybe (LHEvent,a,b)
+              -> IO ()
+interwine3 h (Just (lhe1,_,_)) 
+             (Just (lhe2,_,_)) 
+             (Just (lhe3,_,_)) = do 
+  let lhe1' = interwine2 lhe1 lhe2
+      lhe1_final = interwine2 lhe1' lhe3
+  hPutStrLn h (lheFormatOutput lhe1_final)
+
+-- | 
+
+interwine2 :: LHEvent -> LHEvent -> LHEvent 
+interwine2 (LHEvent einfo1 pinfos1) (LHEvent einfo2 pinfos2) =  
   let ptlids1 = map ptlid pinfos1
       icols1 = filter (/= 0) (concatMap ((\x -> [fst x, snd x]) . icolup )
                                 pinfos1)
       maxid1 = maximum ptlids1 
       maxicol1 = maximum icols1 
       minicol1 = minimum icols1 
-      npinfos2'  = map (adjustIds (idChange (maxid1-1))
-                                 (colChange (maxicol1-minicol1+1))
-                       ) 
+      npinfos2'  = map (adjustIds (idChange (maxid1-1)) (colChange (maxicol1-minicol1+1)))
                        pinfos2
-
-      n1 = head $ getN1 pinfos1
+      (first1,(n1:rest1)) = getN1 pinfos1
+      pinfos1' = first1 ++ (n1 { istup = 2} : rest1)
       rn1  = head $ npinfos2' 
-      -- mom = pupTo4mom . pup $ n1 
       (_:npinfos2) = adjustIdMomSpin (n1,rn1) . adjustFirst (ptlid n1) $ npinfos2'  
-
-      npinfos = pinfos1 ++ npinfos2
+      npinfos = pinfos1' ++ npinfos2
       numptls = length npinfos
       neinfo = einfo1 { nup = numptls }
-      nlhe = LHEvent neinfo npinfos 
-  hPutStrLn h (lheFormatOutput nlhe)
+  in LHEvent neinfo npinfos 
+
   
-{- 
-  hPutStrLn h (show n ++ "  " ++ show wgt) 
-  hPutStrLn h ("0 0 0 ")
-  hPutStrLn h (show (mkIntTree pinfos))
-  hPutStrLn h (show ptlids)
-  hPutStrLn h (show maxid)
-  hPutStrLn h (show icols) 
-  hPutStrLn h (show maxicol)
-  hPutStrLn h "*********************"
-  hPutStrLn h (show pinfos)
-  hPutStrLn h "---------------------" 
-  hPutStrLn h (show npinfos)
-  hPutStrLn h "=====================" -}
 
 
 -- |
@@ -216,7 +184,7 @@ lheFormatOutput (LHEvent einfo pinfos) =
   ++ printf "%14.7E" (aqedup einfo) ++ " " 
   ++ printf "%14.7E" (aqcdup einfo) ++ endl 
   ++ concatMap pformat pinfos 
-  ++ "</event>" ++ endl
+  ++ "</event>" -- ++ endl
 
 -- | 
 
