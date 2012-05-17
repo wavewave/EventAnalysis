@@ -1,5 +1,5 @@
 Name:		EventAnalysis
-Version:	0.0.999
+Version:	0.1
 Synopsis:	LHEvent, LHCOAnalysis event processing using Enumerator
 Description: 	LHEvent and LHCOAnalysis common routines for event processing using enumerator so 
                 as to reduce some redundant works.
