@@ -8,6 +8,7 @@ import HEP.Automation.EventAnalysis.Print
 
 import Control.Applicative 
 import Control.Monad
+import Control.Monad.State 
 import Control.Monad.Trans
 
 import Data.IORef
@@ -21,7 +22,7 @@ import qualified Data.Attoparsec.Lazy as A
 import qualified Data.Attoparsec.Char8 as C
 import qualified Data.ByteString as S 
 import qualified Data.Attoparsec as AS
-import Data.Attoparsec.Char8
+import qualified Data.Attoparsec.Char8 as AC 
 import Control.Applicative ((<|>))
 
 import HEP.Automation.JobQueue.JobQueue
@@ -54,9 +55,10 @@ import System.FilePath
 import System.IO
 import System.Directory 
 
-import Data.Enumerator.Util (zipStreamWithList)
-import Data.Enumerator ((=$))
-import qualified Data.Enumerator.List as EL 
+import Data.Conduit 
+import qualified Data.Conduit.List as CL 
+import Data.Conduit.Util.Control (zipStreamWithList)
+import Data.Conduit.Util.Count
 
 import HEP.Parser.LHEParser.Type 
 
@@ -81,15 +83,25 @@ startSingle lhefile pdffile = do
 -- afbTTBar >>= liftIO . print }
   doSingleFileAnalysis analysis 
 
+type CountIO = StateT Int IO 
+
 
 startJunjie :: FilePath -> FilePath -> IO () 
 startJunjie lhefile outfile =
-    withFile outfile WriteMode $ \h -> processFile (lheventIter $  zipStreamWithList [1..]  =$ iter h ) lhefile >> hPutStrLn h "0 0 " >> return () 
-  where iter h = EL.foldM (\() a -> maybe (return ()) (\(n,x)->liftIO $ printfunc h n x) a) ()  
+  withFile lhefile ReadMode $ \ih -> 
+    withFile outfile WriteMode $ \oh -> do 
+      let filesrc :: Source CountIO (Maybe (LHEvent,PtlInfoMap, [DecayTop PtlIDInfo])) 
+          filesrc = ungzipHandle ih =$= lheventIter 
+          combsrc :: Source CountIO (Int, (Maybe (LHEvent,PtlInfoMap,[DecayTop PtlIDInfo])))
+          combsrc = zipStreamWithList [1..] filesrc 
+          action = combsrc $$ iter oh -- $$ zipSinks3 countIter countMarkerIter (iter oh)  
+      runStateT action (0 :: Int)
+      hPutStrLn oh "0 0 " 
+  where iter h = CL.foldM (\() (n,a) -> maybe (return ()) (\(ev,_,_)->liftIO $ printfunc h n ev) a) ()  
 
 
-printfunc :: Handle -> Int -> Maybe (LHEvent,a,b) -> IO () 
-printfunc h n (Just (ev@(LHEvent einfo pinfos),_,_)) = do
+printfunc :: Handle -> Int -> LHEvent -> IO () 
+printfunc h n (ev@(LHEvent einfo pinfos)) = do
   let EvInfo _ _ wgt _ _ _ = einfo 
   hPutStrLn h (show n ++ "  " ++ show wgt) 
   hPutStrLn h ("0 0 0 ")
@@ -97,7 +109,6 @@ printfunc h n (Just (ev@(LHEvent einfo pinfos),_,_)) = do
                     in  hPutStrLn h $ show (idup x) ++ " " ++ show px ++ " " ++ show py ++ " " ++ show pz ++ " " ++ show pe ++ " 0 0 "
   mapM_ formatter pinfos 
   hPutStrLn h "0"
-printfunc h n Nothing = return () 
 
 
 {-
@@ -120,13 +131,14 @@ startJsonTest fp = do
   let pjsonresult = A.parse json bstr
   case pjsonresult of 
     A.Done _ jsonresult -> do 
-      let eresult :: Either String [JobInfo] = fromAeson jsonresult
+      let eresult :: Result [JobInfo] = fromJSON jsonresult
       case eresult of
-        Left str -> putStrLn str 
-        Right lst -> do 
+        Error str -> putStrLn str 
+        Success lst -> do 
           print (Prelude.length lst)
           print (Prelude.head lst)
 
+-- | 
 
 getJobInfoList :: FilePath -> IO [JobInfo]
 getJobInfoList fp = do
@@ -134,10 +146,12 @@ getJobInfoList fp = do
   let pjsonresult = A.parse json bstr
   case pjsonresult of 
     A.Done _ jsonresult -> do 
-      let eresult :: Either String [JobInfo] = fromAeson jsonresult
+      let eresult :: Result [JobInfo] = fromJSON jsonresult
       case eresult of
-        Left str -> error str 
-        Right lst -> return lst 
+        Error str -> error str 
+        Success lst -> return lst 
+
+-- | 
 
 enumjobdetail :: JobDetail -> (Int,String)
 enumjobdetail (EventGen _ _) = (0,"eventgen")
@@ -268,9 +282,9 @@ getCrossSection fp = do
 
 parseCrossSection :: A.Parser Double
 parseCrossSection = do 
-  takeTill (== 'C') 
-  (try ( string "Cross section (pb):" >> skipSpace >> double )
-   <|> (char 'C' >> parseCrossSection ))
+  AC.takeTill (== 'C') 
+  (AC.try ( AC.string "Cross section (pb):" >> AC.skipSpace >> AC.double )
+   <|> (AC.char 'C' >> parseCrossSection ))
 
 readMathematicaData :: Handle -> FilePath -> IO () 
 readMathematicaData h fp = do 
@@ -398,11 +412,11 @@ startEventSetAFBHL h wrdir evset = do
       setCurrentDirectory cdir 
 
 
-xsecFromBanner :: Parser Double 
+xsecFromBanner :: AC.Parser Double 
 xsecFromBanner = do 
-  takeTill (== '#') 
-  (try (string "#  Integrated weight (pb)  :" *> skipSpace *> (many (C.satisfy (C.inClass ".0123456789E+-")) >>= return . readDouble . ('0':)) )
-   <|> ( char '#' *> xsecFromBanner ) )
+  AC.takeTill (== '#') 
+  (AC.try (AC.string "#  Integrated weight (pb)  :" *> AC.skipSpace *> (many (C.satisfy (C.inClass ".0123456789E+-")) >>= return . readDouble . ('0':)) )
+   <|> ( AC.char '#' *> xsecFromBanner ) )
 
 
        

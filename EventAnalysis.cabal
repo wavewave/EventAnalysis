@@ -1,5 +1,5 @@
 Name:		EventAnalysis
-Version:	0.1
+Version:	0.1.999
 Synopsis:	LHEvent, LHCOAnalysis event processing using Enumerator
 Description: 	LHEvent and LHCOAnalysis common routines for event processing using enumerator so 
                 as to reduce some redundant works.
@@ -29,25 +29,25 @@ Library
                    base>4, mtl>2, directory, filepath,
                    cmdargs, 
                    xml-types == 0.3.*,
-                   enumerator >= 0.4.18 && < 0.5, 
-                   enumerator-util == 0.1.*,
-                   LHEParser == 0.2.*, 
+                   conduit == 0.4.*,
+                   conduit-util >= 0.1.999 && <  0.3,
+                   LHEParser >= 0.2.999 && < 0.3, 
                    HEPUtil == 0.1.*,
                    HROOT == 0.7.*, 
                    ttbar >= 0.1.999 && < 0.3, 
-                   jobqueue-common >= 0.1.999, 
-                   aeson == 0.5.*, 
+                   jobqueue-common >= 0.2.999 && < 0.4, 
+                   aeson == 0.6.*, 
                    vector == 0.9.*, 
-                   unordered-containers == 0.1.*, 
+                   unordered-containers == 0.2.*, 
                    madgraph-auto == 0.6.*, 
                    blaze-builder == 0.3.*, 
-                   zlib-enum == 0.2.*, 
+                   zlib-conduit == 0.4.*, 
                    webdav-manager == 0.1.*, 
                    text == 0.11.*, 
                    containers == 0.4.*, 
                    attoparsec == 0.10.*, 
                    bytestring == 0.9.*, 
-                   xml-enumerator == 0.4.*, 
+                   xml-conduit == 0.7.*, 
                    mathematica-data >= 0.0.999 && < 0.2
   Exposed-Modules: 
                    HEP.Automation.EventAnalysis.ProgType

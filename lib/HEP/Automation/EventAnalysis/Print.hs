@@ -6,14 +6,14 @@ import HEP.Parser.LHEParser.Type
 import HEP.Parser.LHEParser.DecayTop
 
 import Control.Monad.Trans
-import Data.Enumerator 
-import qualified Data.Enumerator.List as EL
+import Data.Conduit
+import qualified Data.Conduit.List as CL
 
 dummyanalysis = const (return ()) 
 
-showSomeEvents :: (MonadIO m) => Integer -> Iteratee (Maybe (a,b,[DecayTop PtlIDInfo])) m ()
+showSomeEvents :: (MonadIO m) => Int -> Sink (Maybe (a,b,[DecayTop PtlIDInfo])) m ()
 showSomeEvents n = do 
-  lst <- EL.take n 
+  lst <-CL.take n 
   mapM_ (maybe (return ()) $ \(_,_,dtops) -> do -- mapM_ (liftIO . print . fmap pdgid ) dtops 
                                                 mapM_ (liftIO . print) dtops 
                                                 liftIO $ putStrLn "-----------------------" ) lst 
