@@ -94,7 +94,7 @@ startJunjie lhefile outfile =
           filesrc = ungzipHandle ih =$= lheventIter 
           combsrc :: Source CountIO (Int, (Maybe (LHEvent,PtlInfoMap,[DecayTop PtlIDInfo])))
           combsrc = zipStreamWithList [1..] filesrc 
-          action = combsrc $$ iter oh -- $$ zipSinks3 countIter countMarkerIter (iter oh)  
+          action = combsrc $$ zipSinks3 countIter countMarkerIter (iter oh)  
       runStateT action (0 :: Int)
       hPutStrLn oh "0 0 " 
   where iter h = CL.foldM (\() (n,a) -> maybe (return ()) (\(ev,_,_)->liftIO $ printfunc h n ev) a) ()  
